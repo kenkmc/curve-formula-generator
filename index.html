@@ -1,0 +1,536 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Interactive Plotting Tool</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        body {
+            font-family: "Inter", sans-serif;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            padding: 20px;
+            background-color: #f0f4f8;
+            color: #333;
+        }
+        .container {
+            background-color: #ffffff;
+            padding: 30px;
+            border-radius: 12px;
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+            max-width: 800px;
+            width: 100%;
+            text-align: center;
+            margin-bottom: 20px;
+        }
+        h1 {
+            font-size: 2.5rem;
+            color: #1a202c;
+            margin-bottom: 20px;
+        }
+        canvas {
+            border: 2px solid #cbd5e0;
+            background-color: #ffffff;
+            border-radius: 8px;
+            box-shadow: inset 0 2px 4px rgba(0, 0, 0, 0.06);
+            cursor: crosshair; /* Indicate clickable area */
+            width: 100%; /* Make canvas responsive */
+            max-width: 600px; /* Max width for desktop */
+            height: 400px;
+            display: block; /* Remove extra space below canvas */
+            margin: 0 auto;
+        }
+        .controls {
+            display: flex;
+            flex-direction: column;
+            gap: 15px;
+            margin-top: 20px;
+            align-items: center;
+        }
+        .radio-group {
+            display: flex;
+            gap: 20px;
+            justify-content: center;
+            margin-bottom: 10px;
+        }
+        .radio-group label {
+            cursor: pointer;
+            padding: 8px 15px;
+            border: 1px solid #a0aec0;
+            border-radius: 6px;
+            transition: all 0.2s ease-in-out;
+            background-color: #edf2f7;
+        }
+        .radio-group input[type="radio"]:checked + label {
+            background-color: #4299e1;
+            color: white;
+            border-color: #4299e1;
+            box-shadow: 0 2px 4px rgba(66, 153, 225, 0.3);
+        }
+        .radio-group input[type="radio"] {
+            display: none; /* Hide default radio button */
+        }
+        button {
+            background-color: #4299e1;
+            color: white;
+            padding: 10px 20px;
+            border: none;
+            border-radius: 8px;
+            cursor: pointer;
+            font-size: 1rem;
+            transition: background-color 0.3s ease, transform 0.1s ease;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+        }
+        button:hover {
+            background-color: #3182ce;
+            transform: translateY(-1px);
+        }
+        button:active {
+            transform: translateY(0);
+            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+        }
+        #formulaDisplay {
+            margin-top: 25px;
+            font-size: 1.2rem;
+            font-weight: 600;
+            color: #2d3748;
+            background-color: #e2e8f0;
+            padding: 15px;
+            border-radius: 8px;
+            box-shadow: inset 0 1px 3px rgba(0, 0, 0, 0.08);
+            min-height: 50px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            word-break: break-all; /* Allow long formulas to break */
+        }
+        .instructions {
+            margin-top: 20px;
+            text-align: left;
+            padding: 0 20px;
+        }
+        .instructions ol {
+            list-style-type: decimal;
+            padding-left: 25px;
+        }
+        .instructions li {
+            margin-bottom: 8px;
+            line-height: 1.5;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Interactive Plotting Tool</h1>
+
+        <p class="text-lg text-gray-700 mb-6">
+            Plot straight lines or curves by adding points, and see their formulas!
+        </p>
+
+        <canvas id="plottingCanvas" width="600" height="400"></canvas>
+
+        <div class="controls">
+            <div class="radio-group">
+                <input type="radio" id="plotTypeLine" name="plotType" value="line" checked>
+                <label for="plotTypeLine" class="rounded-md">Straight Line</label>
+                <input type="radio" id="plotTypeCurve" name="plotType" value="curve">
+                <label for="plotTypeCurve" class="rounded-md">Curve (Polynomial)</label>
+            </div>
+            <button onclick="clearCanvas()" class="rounded-lg">Clear Canvas</button>
+        </div>
+
+        <div id="formulaDisplay" class="rounded-lg">Click on the canvas to start plotting!</div>
+
+        <div class="instructions">
+            <h2 class="text-xl font-semibold mb-3 text-gray-800">Instructions:</h2>
+            <ol>
+                <li>Select "Straight Line" or "Curve" as your plot type.</li>
+                <li>Click anywhere on the canvas to add points.</li>
+                <li>For a **straight line**, you need at least two points.</li>
+                <li>For a **curve**, add multiple points to define the shape. The tool will attempt to fit a polynomial to your points.</li>
+                <li>The formula for the plotted line or curve will appear below.</li>
+            </ol>
+        </div>
+    </div>
+
+    <script>
+        document.addEventListener('DOMContentLoaded', () => {
+            const canvas = document.getElementById('plottingCanvas');
+            const ctx = canvas.getContext('2d');
+            const formulaDisplay = document.getElementById('formulaDisplay');
+            const plotTypeLine = document.getElementById('plotTypeLine');
+            const plotTypeCurve = document.getElementById('plotTypeCurve');
+
+            let points = [];
+            const gridSize = 20; // Represents h=1, w=1 in canvas units (e.g., 20 pixels per unit)
+            const originX = 50; // Offset for X-axis
+            const originY = canvas.height - 50; // Offset for Y-axis
+
+            // Function to draw the grid and axes
+            function drawGrid() {
+                ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+                // Grid lines (lighter color)
+                ctx.strokeStyle = '#e2e8f0'; // Light gray for grid
+                ctx.lineWidth = 1;
+
+                // Draw vertical grid lines
+                for (let x = originX; x <= canvas.width - 20; x += gridSize) {
+                    ctx.beginPath();
+                    ctx.moveTo(x, 20);
+                    ctx.lineTo(x, canvas.height - 20);
+                    ctx.stroke();
+                }
+                // Draw horizontal grid lines
+                for (let y = originY; y >= 20; y -= gridSize) {
+                    ctx.beginPath();
+                    ctx.moveTo(20, y);
+                    ctx.lineTo(canvas.width - 20, y);
+                    ctx.stroke();
+                }
+
+                // Draw X-axis
+                ctx.beginPath();
+                ctx.moveTo(originX, originY);
+                ctx.lineTo(canvas.width - 20, originY);
+                ctx.strokeStyle = '#000';
+                ctx.lineWidth = 2;
+                ctx.stroke();
+
+                // Draw Y-axis
+                ctx.beginPath();
+                ctx.moveTo(originX, originY);
+                ctx.lineTo(originX, 20);
+                ctx.strokeStyle = '#000';
+                ctx.lineWidth = 2;
+                ctx.stroke();
+
+                // Draw X-axis arrow
+                ctx.beginPath();
+                ctx.moveTo(canvas.width - 20, originY);
+                ctx.lineTo(canvas.width - 30, originY - 5);
+                ctx.lineTo(canvas.width - 30, originY + 5);
+                ctx.closePath();
+                ctx.fillStyle = '#000';
+                ctx.fill();
+
+                // Draw Y-axis arrow
+                ctx.beginPath();
+                ctx.moveTo(originX, 20);
+                ctx.lineTo(originX - 5, 30);
+                ctx.lineTo(originX + 5, 30);
+                ctx.closePath();
+                ctx.fillStyle = '#000';
+                ctx.fill();
+
+                ctx.font = '12px Inter';
+                ctx.fillStyle = '#333';
+                ctx.textAlign = 'center';
+                ctx.textBaseline = 'middle';
+
+                // Draw X-axis labels
+                for (let x = originX + gridSize; x < canvas.width - 20; x += gridSize) {
+                    ctx.fillText(((x - originX) / gridSize).toFixed(0), x, originY + 15);
+                }
+
+                // Draw Y-axis labels
+                ctx.textAlign = 'right';
+                for (let y = originY - gridSize; y > 20; y -= gridSize) {
+                    ctx.fillText(((originY - y) / gridSize).toFixed(0), originX - 10, y);
+                }
+
+                // Draw origin label
+                ctx.textAlign = 'center';
+                ctx.fillText("0", originX - 15, originY + 15);
+            }
+
+            // Function to convert canvas coordinates to plot coordinates
+            function toPlotCoords(x, y) {
+                return {
+                    x: (x - originX) / gridSize,
+                    y: (originY - y) / gridSize
+                };
+            }
+
+            // Function to convert plot coordinates to canvas coordinates
+            function toCanvasCoords(x, y) {
+                return {
+                    x: x * gridSize + originX,
+                    y: originY - y * gridSize
+                };
+            }
+
+            // Function to draw a point
+            function drawPoint(x, y) {
+                ctx.beginPath();
+                ctx.arc(x, y, 5, 0, 2 * Math.PI);
+                ctx.fillStyle = '#ef4444'; /* Tailwind red-500 */
+                ctx.fill();
+                ctx.strokeStyle = '#b91c1c'; /* Tailwind red-700 */
+                ctx.lineWidth = 1.5;
+                ctx.stroke();
+            }
+
+            // Function to plot a straight line
+            function plotLine() {
+                if (points.length < 2) {
+                    formulaDisplay.textContent = "Add at least two points to plot a straight line.";
+                    return;
+                }
+
+                const p1 = toPlotCoords(points[0].x, points[0].y);
+                const p2 = toPlotCoords(points[1].x, points[1].y);
+
+                let formula = "";
+
+                if (Math.abs(p1.x - p2.x) < 0.001) { // Check for vertical line
+                    formula = `x = ${p1.x.toFixed(2)}`;
+                    ctx.beginPath();
+                    ctx.moveTo(points[0].x, 0); // Draw from top to bottom of canvas
+                    ctx.lineTo(points[0].x, canvas.height);
+                    ctx.strokeStyle = '#3b82f6'; /* Tailwind blue-500 */
+                    ctx.lineWidth = 2;
+                    ctx.stroke();
+                } else {
+                    const m = (p2.y - p1.y) / (p2.x - p1.x);
+                    const c = p1.y - m * p1.x;
+                    formula = `y = ${m.toFixed(2)}x ${c >= 0 ? '+' : '-'} ${Math.abs(c).toFixed(2)}`;
+
+                    ctx.beginPath();
+                    // Draw the line across the entire visible canvas
+                    const startXPlot = toPlotCoords(originX, 0).x;
+                    const startYPlot = m * startXPlot + c;
+                    const startCanvasCoords = toCanvasCoords(startXPlot, startYPlot);
+
+                    const endXPlot = toPlotCoords(canvas.width - 20, 0).x;
+                    const endYPlot = m * endXPlot + c;
+                    const endCanvasCoords = toCanvasCoords(endXPlot, endYPlot);
+
+                    ctx.moveTo(startCanvasCoords.x, startCanvasCoords.y);
+                    ctx.lineTo(endCanvasCoords.x, endCanvasCoords.y);
+                    ctx.strokeStyle = '#3b82f6'; /* Tailwind blue-500 */
+                    ctx.lineWidth = 2;
+                    ctx.stroke();
+                }
+                formulaDisplay.textContent = `Formula: ${formula}`;
+            }
+
+            // Function to plot a curve (polynomial regression)
+            function plotCurve() {
+                if (points.length < 2) {
+                    formulaDisplay.textContent = "Add at least two points to plot a curve.";
+                    return;
+                }
+
+                const plotPoints = points.map(p => toPlotCoords(p.x, p.y));
+
+                // Determine polynomial degree based on number of points
+                // Max degree 3 for simplicity to avoid overfitting with few points
+                let degree = Math.min(plotPoints.length - 1, 3);
+
+                if (degree < 1) {
+                    formulaDisplay.textContent = "Add more points for a meaningful curve.";
+                    return;
+                }
+
+                let polynomial = calculatePolynomial(plotPoints, degree);
+                if (!polynomial) {
+                    formulaDisplay.textContent = "Could not calculate polynomial. Try adding more varied points.";
+                    return;
+                }
+
+                // Draw the curve
+                ctx.beginPath();
+                ctx.strokeStyle = '#3b82f6'; /* Tailwind blue-500 */
+                ctx.lineWidth = 2;
+
+                let firstPoint = true;
+                // Iterate over canvas X coordinates to draw the curve smoothly
+                for (let i = originX; i <= canvas.width - 20; i++) {
+                    const plotX = toPlotCoords(i, 0).x;
+                    let plotY = 0;
+                    for (let j = 0; j <= degree; j++) {
+                        plotY += (polynomial[j] || 0) * Math.pow(plotX, j); // Use 0 if coefficient is undefined
+                    }
+                    const canvasCoords = toCanvasCoords(plotX, plotY);
+
+                    // Only draw if within canvas Y bounds to avoid drawing outside
+                    if (canvasCoords.y >= 0 && canvasCoords.y <= canvas.height) {
+                        if (firstPoint) {
+                            ctx.moveTo(canvasCoords.x, canvasCoords.y);
+                            firstPoint = false;
+                        } else {
+                            ctx.lineTo(canvasCoords.x, canvasCoords.y);
+                        }
+                    } else if (!firstPoint) {
+                        // If segment goes out of bounds, lift pen and start new segment if it comes back in
+                        ctx.stroke();
+                        ctx.beginPath();
+                        firstPoint = true; // Reset firstPoint for next segment
+                    }
+                }
+                ctx.stroke();
+
+                let formulaStringPrefix = "y = "; // Ensure "y = " is always present
+                let terms = [];
+                for (let i = degree; i >= 0; i--) {
+                    const coeff = polynomial[i];
+                    if (coeff === undefined || Math.abs(coeff) < 0.0001) { // Skip very small coefficients
+                        if (i === 0 && terms.length === 0) { // If only constant term and it's zero
+                             terms.push("0");
+                        }
+                        continue;
+                    }
+
+                    let term = `${coeff.toFixed(2)}`;
+                    if (i === 1) {
+                        term += "x";
+                    } else if (i > 1) {
+                        term += `x^${i}`;
+                    }
+                    terms.push(term);
+                }
+
+                let finalFormulaContent;
+                if (terms.length === 0) {
+                    finalFormulaContent = "0"; // Default if no terms
+                } else {
+                    // Reconstruct formula string with proper signs
+                    finalFormulaContent = terms.reverse().reduce((acc, current, index) => {
+                        if (index === 0) {
+                            return current;
+                        } else {
+                            // Check the sign of the current coefficient to determine + or -
+                            const currentCoeffMatch = current.match(/^-?\d+\.\d+/);
+                            const currentCoeff = currentCoeffMatch ? parseFloat(currentCoeffMatch[0]) : 0;
+
+                            const termWithoutSign = current.replace(/^-?\d+\.\d+/, Math.abs(currentCoeff).toFixed(2));
+                            return acc + (currentCoeff >= 0 ? ' + ' : ' - ') + termWithoutSign;
+                        }
+                    }, "");
+                }
+
+                formulaDisplay.textContent = `Formula: ${formulaStringPrefix}${finalFormulaContent}`;
+            }
+
+            // Function for polynomial regression (least squares method)
+            // Based on numerical recipes in C, Chapter 15
+            function calculatePolynomial(plotPoints, degree) {
+                const n = plotPoints.length;
+                if (n <= degree) { // Need at least degree + 1 points for a polynomial of degree 'degree'
+                    console.warn("Not enough points for the requested polynomial degree.");
+                    return null;
+                }
+
+                const A = Array(degree + 1).fill(0).map(() => Array(degree + 1).fill(0));
+                const B = Array(degree + 1).fill(0);
+
+                for (let i = 0; i <= degree; i++) {
+                    for (let j = 0; j <= degree; j++) {
+                        let sumX = 0;
+                        for (let k = 0; k < n; k++) {
+                            sumX += Math.pow(plotPoints[k].x, i + j);
+                        }
+                        A[i][j] = sumX;
+                    }
+                    let sumY = 0;
+                    for (let k = 0; k < n; k++) {
+                        sumY += plotPoints[k].y * Math.pow(plotPoints[k].x, i);
+                    }
+                    B[i] = sumY;
+                }
+
+                // Solve linear system Ax = B using Gaussian elimination
+                for (let i = 0; i <= degree; i++) {
+                    let maxRow = i;
+                    for (let k = i + 1; k <= degree; k++) {
+                        if (Math.abs(A[k][i]) > Math.abs(A[maxRow][i])) {
+                            maxRow = k;
+                        }
+                    }
+                    [A[i], A[maxRow]] = [A[maxRow], A[i]];
+                    [B[i], B[maxRow]] = [B[maxRow], B[i]];
+
+                    if (Math.abs(A[i][i]) < 1e-9) { // Check for near-zero pivot
+                        console.warn("Matrix is singular or ill-conditioned, cannot perform regression.");
+                        return null;
+                    }
+
+                    for (let k = i + 1; k <= degree; k++) {
+                        const factor = A[k][i] / A[i][i];
+                        for (let j = i; j <= degree; j++) {
+                            A[k][j] -= factor * A[i][j];
+                        }
+                        B[k] -= factor * B[i];
+                    }
+                }
+
+                const x = Array(degree + 1).fill(0);
+                for (let i = degree; i >= 0; i--) {
+                    let sum = 0;
+                    for (let j = i + 1; j <= degree; j++) {
+                        sum += A[i][j] * x[j];
+                    }
+                    x[i] = (B[i] - sum) / A[i][i];
+                }
+                return x; // Coefficients [c0, c1, c2, ...] for c0 + c1*x + c2*x^2 + ...
+            }
+
+
+            // Handle canvas clicks
+            canvas.addEventListener('click', function(event) {
+                const rect = canvas.getBoundingClientRect();
+                const rawX = event.clientX - rect.left;
+                const rawY = event.clientY - rect.top;
+
+                // Convert to plot coordinates, round to nearest integer, then convert back to canvas coordinates
+                const plotCoords = toPlotCoords(rawX, rawY);
+                const snappedPlotX = Math.round(plotCoords.x);
+                const snappedPlotY = Math.round(plotCoords.y);
+
+                // Convert snapped plot coordinates back to canvas coordinates
+                const snappedCanvasCoords = toCanvasCoords(snappedPlotX, snappedPlotY);
+
+                // Ensure snapped points are within the drawable grid area
+                // This prevents snapping outside the visible grid and axis labels
+                if (snappedCanvasCoords.x >= originX && snappedCanvasCoords.x <= canvas.width - 20 &&
+                    snappedCanvasCoords.y >= 20 && snappedCanvasCoords.y <= originY) {
+                    points.push({ x: snappedCanvasCoords.x, y: snappedCanvasCoords.y });
+                    updatePlot();
+                } else {
+                    // Optionally, provide feedback if click was too far off grid
+                    console.log("Clicked too far from a valid grid point.");
+                }
+            });
+
+            // Handle plot type changes
+            plotTypeLine.addEventListener('change', updatePlot);
+            plotTypeCurve.addEventListener('change', updatePlot);
+
+            // Function to update the plot based on selected type and points
+            function updatePlot() {
+                drawGrid();
+                points.forEach(p => drawPoint(p.x, p.y));
+
+                if (plotTypeLine.checked) {
+                    plotLine();
+                } else if (plotTypeCurve.checked) {
+                    plotCurve();
+                }
+            }
+
+            // Function to clear the canvas and reset points
+            window.clearCanvas = function() { // Make it globally accessible for onclick
+                points = [];
+                drawGrid();
+                formulaDisplay.textContent = "Click on the canvas to start plotting!";
+            };
+
+            // Initial draw
+            drawGrid();
+        });
+    </script>
+</body>
+</html>
